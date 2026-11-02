@@ -21,36 +21,74 @@ function runTemocus(source) {
     throw new Error(message);
   }
 
-  function getValue(text) {
-    text = text.trim();
+function getValue(text) {
+  text = text.trim();
 
-    if (
-      (text.startsWith('"') && text.endsWith('"')) ||
-      (text.startsWith("'") && text.endsWith("'"))
-    ) {
-      return text.slice(1, -1);
+  // Разделение частей по символу |,
+  // но только если он находится вне кавычек
+  function splitConcatenation(expression) {
+    const parts = [];
+    let current = "";
+    let quote = null;
+
+    for (const char of expression) {
+      if ((char === '"' || char === "'") && !quote) {
+        quote = char;
+        current += char;
+      } else if (char === quote) {
+        quote = null;
+        current += char;
+      } else if (char === "|" && !quote) {
+        parts.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
     }
 
-    if (/^-?\d+(?:[.,]\d+)?$/.test(text)) {
-      return Number(text.replace(",", "."));
-    }
-
-    if (text === "true") return true;
-    if (text === "false") return false;
-
-    if (text === "{finin}.upper") return fininResult;
-    if (text === "{human.otv}") return inputs[0] ?? "";
-    if (text === "{human.otv}.second2") return inputs[1] ?? "";
-    if (text === "{human.otv}.third3") return inputs[2] ?? "";
-
-    const name = text.startsWith("+") ? text.slice(1) : text;
-
-    if (Object.prototype.hasOwnProperty.call(variables, name)) {
-      return variables[name];
-    }
-
-    fail(`Неизвестное значение: ${text}`);
+    parts.push(current.trim());
+    return parts;
   }
+
+  const parts = splitConcatenation(text);
+
+  // Если частей несколько — склеиваем их
+  if (parts.length > 1) {
+    return parts.map(part => String(getValue(part))).join("");
+  }
+
+  // Текст в кавычках
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    return text.slice(1, -1);
+  }
+
+  // Числа
+  if (/^-?\d+(?:[.,]\d+)?$/.test(text)) {
+    return Number(text.replace(",", "."));
+  }
+
+  // Логические значения
+  if (text === "true") return true;
+  if (text === "false") return false;
+
+  // Специальные значения Temocus
+  if (text === "{finin}.upper") return fininResult;
+  if (text === "{human.otv}") return inputs[0] ?? "";
+  if (text === "{human.otv}.second2") return inputs[1] ?? "";
+  if (text === "{human.otv}.third3") return inputs[2] ?? "";
+
+  // Поиск переменной
+  const name = text.startsWith("+") ? text.slice(1) : text;
+
+  if (Object.prototype.hasOwnProperty.call(variables, name)) {
+    return variables[name];
+  }
+
+  fail(`Неизвестное значение: ${text}`);
+}
 
   function setVariable(name, value) {
     variables[name] = value;
