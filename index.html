@@ -1,1 +1,73 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Temocus Sandbox</title>
+  <meta name="description" content="A sandbox environment for Temocus, a custom programming language.">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <header class="topbar">
+      <div class="logo">T<span>CS</span></div>
+
+      <div class="brand">
+        <h1>Temocus Sandbox</h1>
+        <p>Development Environment · v1.0</p>
+      </div>
+
+      <button id="runButton">▶ Запустить</button>
+    </header>
+
+    <main class="workspace">
+
+      <section class="editor">
+        <div class="panel-title">
+          📝 Редактор Temocus
+        </div>
+
+        <textarea
+          id="code"
+          spellcheck="false"
+          placeholder="Напиши свою программу Temocus..."
+        >!TCS
+Say ("Привет, мир!"):
+TCS!</textarea>
+      </section>
+
+      <section class="output">
+
+        <div class="panel-title">
+          📟 Вывод программы
+        </div>
+
+        <pre id="output">Здесь появится результат...</pre>
+
+        <div class="panel-title">
+          🕵️ Секретная консоль
+        </div>
+
+        <pre id="secret">Ожидание данных...</pre>
+
+      </section>
+
+    </main>
+
+    <footer>
+      Temocus Sandbox · Made for Temocus
+    </footer>
+
+  </div>
+
+  <script src="script.js"></script>
+
+</body>
+</html>
+
