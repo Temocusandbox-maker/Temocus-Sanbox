@@ -169,9 +169,14 @@ function getValue(text) {
       fail(`Неизвестное условие: ${condition}`);
     }
 
-    const left = getValue(match[1]);
-    const right = getValue(match[3]);
-
+       const left = getValue(match[1].trim());
+    const rightText = match[3].trim();
+    const right = getValue(
+      rightText.startsWith("[") && rightText.endsWith("]")
+        ? rightText.slice(1, -1)
+        : rightText
+    );
+    
     switch (match[2]) {
       case "@=":
       case "=@":
@@ -200,13 +205,20 @@ function getValue(text) {
     }
   }
 
-  function findClosing(start, open, close) {
+   function findClosing(start, open, close) {
     let depth = 0;
 
     for (let i = start; i < lines.length; i++) {
       const line = lines[i].trim();
 
-      if (line.startsWith(open)) depth++;
+      // Для условий *if2 не считается вложенным *if
+      if (
+        open === "*if"
+          ? /^\*if\s+/.test(line)
+          : line.startsWith(open)
+      ) {
+        depth++;
+      }
 
       if (line === close) {
         depth--;
@@ -217,7 +229,7 @@ function getValue(text) {
 
     return -1;
   }
-
+  
   function runBlock(start, end) {
     for (let i = start; i < end; i++) {
       steps++;
