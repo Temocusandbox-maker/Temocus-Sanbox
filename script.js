@@ -429,20 +429,40 @@ function getValue(text) {
               /^\*if\d*\s+/.test(current) ||
               current.startsWith("*not if")
             ) {
+              let branchEnd = j;
+
+              // Убираем закрывающий маркер ;(
+              while (
+                branchEnd > branchStart + 1 &&
+                lines[branchEnd - 1].trim() === ";("
+              ) {
+                branchEnd--;
+              }
+
               branches.push({
                 header: lines[branchStart].trim(),
                 start: branchStart + 1,
-                end: j
+                end: branchEnd
               });
 
               branchStart = j;
             }
           }
 
+          let branchEnd = close;
+
+          // Убираем последний закрывающий маркер ;(
+          while (
+            branchEnd > branchStart + 1 &&
+            lines[branchEnd - 1].trim() === ";("
+          ) {
+            branchEnd--;
+          }
+
           branches.push({
             header: lines[branchStart].trim(),
             start: branchStart + 1,
-            end: close
+            end: branchEnd
           });
 
           let chosen = false;
