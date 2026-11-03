@@ -240,7 +240,7 @@ function getValue(text) {
 
       const line = lines[i].trim();
 
-      if (!line || line.startsWith("//")) continue;
+if (!line || line.startsWith("//") || line === ";(") continue;
 
       try {
         // Ввод данных
