@@ -245,9 +245,9 @@ function getValue(text) {
           continue;
         }
 
-        // Случайные числа
+               // Случайные числа — новый синтаксис rand<min, max>
         const random = line.match(
-          /^\+([A-Za-z_]\w*)\s*=\s*rand<>\.\((-?\d+)\s*,\s*(-?\d+)\)\s*:?$/
+          /^\+([A-Za-z_]\w*)\s*=\s*rand<\s*(-?\d+)\s*,\s*(-?\d+)\s*>\s*:?$/
         );
 
         if (random) {
@@ -255,7 +255,7 @@ function getValue(text) {
           const max = Number(random[3]);
 
           if (min > max) {
-            fail("Первое число rand<> должно быть меньше второго.");
+            fail("Первое число rand должно быть меньше или равно второму.");
           }
 
           const value = Math.floor(
@@ -265,7 +265,6 @@ function getValue(text) {
           setVariable(random[1], value);
           continue;
         }
-
         // Создание переменных
         const assignment = line.match(
           /^\+([A-Za-z_]\w*)\s*=\s*(.+?):?$/
