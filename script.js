@@ -1,4 +1,3 @@
-
 const runButton = document.getElementById("runButton");
 const codeEditor = document.getElementById("code");
 const output = document.getElementById("output");
@@ -15,12 +14,17 @@ function runTemocus(source) {
   let fininResult = false;
   let steps = 0;
   let halted = false;
+  let cycleActive = false;
 
   const MAX_STEPS = 10000;
   const lines = source.split(/\r?\n/);
 
   function fail(message) {
     throw new Error(message);
+  }
+
+  function isConditionHeader(line) {
+    return /^\*if\d*\s+/.test(line) || line.startsWith("*not if");
   }
 
   function getValue(text) {
@@ -71,9 +75,19 @@ function runTemocus(source) {
     if (text === "false") return false;
 
     if (text === "{finin}.upper") return fininResult;
+
+    // Ответы пользователя
     if (text === "{human.otv}") return inputs[0] ?? "";
     if (text === "{human.otv}.second2") return inputs[1] ?? "";
     if (text === "{human.otv}.third3") return inputs[2] ?? "";
+
+    // .upper — последний введённый ответ
+    if (
+      text === ".upper" ||
+      text === "{human.otv}.upper"
+    ) {
+      return inputs[inputs.length - 1] ?? "";
+    }
 
     const name = text.startsWith("+") ? text.slice(1) : text;
 
@@ -134,38 +148,97 @@ function runTemocus(source) {
     return Number(result.toFixed(10));
   }
 
+  // Разделение логических выражений без разделения текста в кавычках
+  function splitLogical(expression, operator) {
+    const result = [];
+    let current = "";
+    let quote = null;
+    let squareDepth = 0;
+    let curlyDepth = 0;
+
+    for (let i = 0; i < expression.length; i++) {
+      const char = expression[i];
+
+      if ((char === '"' || char === "'") && !quote) {
+        quote = char;
+        current += char;
+        continue;
+      }
+
+      if (char === quote) {
+        quote = null;
+        current += char;
+        continue;
+      }
+
+      if (!quote) {
+        if (char === "[") squareDepth++;
+        if (char === "]") squareDepth--;
+        if (char === "{") curlyDepth++;
+        if (char === "}") curlyDepth--;
+
+        if (squareDepth === 0 && curlyDepth === 0) {
+          const remaining = expression.slice(i);
+
+          if (remaining.startsWith(operator)) {
+            result.push(current.trim());
+            current = "";
+            i += operator.length - 1;
+            continue;
+          }
+        }
+      }
+
+      current += char;
+    }
+
+    result.push(current.trim());
+    return result;
+  }
+
   // Проверки Temocus: if, if2, if3 и другие
   function evaluateCondition(condition, conditionName = "if") {
     condition = condition.trim();
 
-    if (condition.startsWith("Not ")) {
+    if (/^not\s+/i.test(condition)) {
       return !evaluateCondition(
-        condition.slice(4),
+        condition.replace(/^not\s+/i, ""),
         conditionName
       );
     }
 
-    const andParts = condition.split(/\s+,\.\s+/);
+    if (/^Not\s+/i.test(condition)) {
+      return !evaluateCondition(
+        condition.replace(/^Not\s+/i, ""),
+        conditionName
+      );
+    }
+
+    const andParts = splitLogical(condition, ",.");
 
     if (andParts.length > 1) {
       let result = true;
 
       for (const part of andParts) {
-        const current = evaluateCondition(part, conditionName);
-        if (!current) result = false;
+        if (!evaluateCondition(part, conditionName)) {
+          result = false;
+          break;
+        }
       }
 
       return result;
     }
 
-    const orParts = condition.split(/\s+o\.r\s+/);
+    const orParts = splitLogical(condition, "o.r");
 
     if (orParts.length > 1) {
       let result = false;
 
       for (const part of orParts) {
-        const current = evaluateCondition(part, conditionName);
-        if (current) result = true;
+        if (evaluateCondition(part, conditionName)) {
+          result = true;
+          break;
+        }
       }
 
       return result;
@@ -173,25 +246,31 @@ function runTemocus(source) {
 
     condition = condition.replace(/^['"]|['"]$/g, "").trim();
 
+    // Левая часть может быть [переменная] или выражением .upper
     const match = condition.match(
-      /^\[([^\]]+)\]\s*(>\.=|<\.=|≠@|@≠|@=|=@|>=|<=|>|<)\s*(.+?)\s*$/
+      /^(\[[^\]]+\]|\{human\.otv\}(?:\.(?:second2|third3|upper))?|\.upper)\s*(>\.=|<\.=|≠@|@≠|@=|=@|>=|<=|>|<)\s*(.+?)\s*$/
     );
 
     if (!match) {
       fail(`Неизвестное условие: ${condition}`);
     }
 
-    const variableName = match[1].trim();
-    const left = getValue(variableName);
+    let leftText = match[1].trim();
+
+    if (leftText.startsWith("[") && leftText.endsWith("]")) {
+      leftText = leftText.slice(1, -1).trim();
+    }
+
+    const left = getValue(leftText);
     const operator = match[2];
     const rightText = match[3].trim();
 
     let right;
     let negate = false;
 
-    // Обработка {if}, {if2}, {if3} и т.д.
+    // Ссылки на сохранённые условия: {if}, {if2}, {if3}...
     const referenceMatch = rightText.match(
-      /^(not\s+)?\{(if\d*)\}$/ 
+      /^(not\s+)?\{(if\d*)\}$/i
     );
 
     if (referenceMatch) {
@@ -200,22 +279,18 @@ function runTemocus(source) {
       const referenceName = referenceMatch[2];
 
       if (
-        !Object.prototype.hasOwnProperty.call(
-          ifValues,
-          referenceName
-        ) ||
+        !Object.prototype.hasOwnProperty.call(ifValues, referenceName) ||
         !Object.prototype.hasOwnProperty.call(
           ifValues[referenceName],
-          variableName
+          leftText
         )
       ) {
         fail(
-          `Нет предыдущего значения {${referenceName}} для ${variableName}.`
+          `Нет предыдущего значения {${referenceName}} для ${leftText}.`
         );
       }
 
-      right = ifValues[referenceName][variableName];
-
+      right = ifValues[referenceName][leftText];
     } else {
       right = getValue(
         rightText.startsWith("[") && rightText.endsWith("]")
@@ -224,12 +299,11 @@ function runTemocus(source) {
       );
     }
 
-    // Сохраняем проверенное значение
     if (!ifValues[conditionName]) {
       ifValues[conditionName] = Object.create(null);
     }
 
-    ifValues[conditionName][variableName] = right;
+    ifValues[conditionName][leftText] = right;
 
     let result;
 
@@ -269,17 +343,18 @@ function runTemocus(source) {
     return negate ? !result : result;
   }
 
-  function findClosing(start, open, close) {
+  // Поиск закрывающей скобки условия
+  function findClosing(start, open, close, limit = lines.length) {
     let depth = 0;
 
-    for (let i = start; i < lines.length; i++) {
+    for (let i = start; i < limit; i++) {
       const line = lines[i].trim();
 
-      if (
-        open === "*if"
-          ? /^\*if\d*\s+/.test(line) || line.startsWith("*not if")
-          : line.startsWith(open)
-      ) {
+      if (open === "*if") {
+        if (isConditionHeader(line)) {
+          depth++;
+        }
+      } else if (line.startsWith(open)) {
         depth++;
       }
 
@@ -293,8 +368,61 @@ function runTemocus(source) {
     return -1;
   }
 
+  // Разбор ветвей одного условия
+  function getConditionBranches(start, close) {
+    const branches = [];
+    let branchHeader = lines[start].trim();
+    let branchStart = start + 1;
+
+    let j = start + 1;
+
+    while (j < close) {
+      const current = lines[j].trim();
+
+      if (isConditionHeader(current)) {
+        const previous = j > start
+          ? lines[j - 1].trim()
+          : "";
+
+        // Условие после ;( — следующая ветвь
+        if (previous === ";(") {
+          branches.push({
+            header: branchHeader,
+            start: branchStart,
+            end: j - 1
+          });
+
+          branchHeader = current;
+          branchStart = j + 1;
+          j++;
+          continue;
+        }
+
+        // Вложенное условие — пропускаем его целиком
+        const nestedClose = findClosing(j, "*if", ":(", close + 1);
+
+        if (nestedClose === -1) {
+          fail("Не найдено закрытие вложенного условия :(.");
+        }
+
+        j = nestedClose + 1;
+        continue;
+      }
+
+      j++;
+    }
+
+    branches.push({
+      header: branchHeader,
+      start: branchStart,
+      end: close
+    });
+
+    return branches;
+  }
+
   function runBlock(start, end) {
-    if (halted) return;
+    if (halted) return null;
 
     for (let i = start; i < end; i++) {
       if (halted) break;
@@ -319,7 +447,7 @@ function runTemocus(source) {
       try {
         // Ввод данных
         const inputMatch = line.match(
-          /^\$human\.otv\("([\s\S]*)"\)\s*:?$/
+          /^\$human\.otv\s*\(\s*["']([\s\S]*?)["']\s*\)\s*:?$/
         );
 
         if (inputMatch) {
@@ -353,8 +481,9 @@ function runTemocus(source) {
         }
 
         // Создание переменных
+        // Знак = здесь используется только для присваивания
         const assignment = line.match(
-          /^\+([A-Za-z_]\w*)\s*=\s*(.+?):?$/
+          /^\+([A-Za-z_]\w*)\s*=\s*(.+?)\s*:?$/
         );
 
         if (assignment) {
@@ -367,7 +496,7 @@ function runTemocus(source) {
 
         // Математика
         const math = line.match(
-          /^&Math\.([A-Za-z_]\w*)\s+(.+?):?$/
+          /^&Math\.([A-Za-z_]\w*)\s+(.+?)\s*:?$/
         );
 
         if (math) {
@@ -445,6 +574,7 @@ function runTemocus(source) {
             count[3],
             `${selected.length}(${selected.join(",")})`
           );
+
           continue;
         }
 
@@ -454,12 +584,19 @@ function runTemocus(source) {
         );
 
         if (conversion) {
-          const [, type, sourceName, searchText, replacement, destination] = conversion;
+          const [
+            ,
+            type,
+            sourceName,
+            searchText,
+            replacement,
+            destination
+          ] = conversion;
+
           const value = String(getValue(sourceName));
-
           const result = value.replace(searchText, replacement);
-          setVariable(destination, result);
 
+          setVariable(destination, result);
           debug.push(`Преобразование ${type} выполнено.`);
           continue;
         }
@@ -470,7 +607,15 @@ function runTemocus(source) {
         );
 
         if (addText) {
-          const [, sourceName, mode, positionText, insertion, destination] = addText;
+          const [
+            ,
+            sourceName,
+            mode,
+            positionText,
+            insertion,
+            destination
+          ] = addText;
+
           const value = String(getValue(sourceName));
 
           const index = Math.max(
@@ -487,57 +632,14 @@ function runTemocus(source) {
         }
 
         // Условия
-        if (/^\*if\d*\s+/.test(line) || line.startsWith("*not if")) {
-          const close = findClosing(i, "*if", ":(");
+        if (isConditionHeader(line)) {
+          const close = findClosing(i, "*if", ":(", end);
 
           if (close === -1) {
             fail("Не найдено закрытие условия :(.");
           }
 
-          const branches = [];
-          let branchStart = i;
-
-          for (let j = i + 1; j < close; j++) {
-            const current = lines[j].trim();
-
-            if (
-              /^\*if\d*\s+/.test(current) ||
-              current.startsWith("*not if")
-            ) {
-              let branchEnd = j;
-
-              while (
-                branchEnd > branchStart + 1 &&
-                lines[branchEnd - 1].trim() === ";("
-              ) {
-                branchEnd--;
-              }
-
-              branches.push({
-                header: lines[branchStart].trim(),
-                start: branchStart + 1,
-                end: branchEnd
-              });
-
-              branchStart = j;
-            }
-          }
-
-          let branchEnd = close;
-
-          while (
-            branchEnd > branchStart + 1 &&
-            lines[branchEnd - 1].trim() === ";("
-          ) {
-            branchEnd--;
-          }
-
-          branches.push({
-            header: lines[branchStart].trim(),
-            start: branchStart + 1,
-            end: branchEnd
-          });
-
+          const branches = getConditionBranches(i, close);
           let chosen = false;
 
           for (const branch of branches) {
@@ -556,16 +658,21 @@ function runTemocus(source) {
 
               const conditionName = conditionMatch[1];
 
-              matches = !chosen &&
-                evaluateCondition(
-                  conditionMatch[2],
-                  conditionName
-                );
+              matches = !chosen && evaluateCondition(
+                conditionMatch[2],
+                conditionName
+              );
             }
 
             if (matches) {
               chosen = true;
-              runBlock(branch.start, branch.end);
+
+              const control = runBlock(
+                branch.start,
+                branch.end
+              );
+
+              if (control) return control;
             }
 
             if (halted) break;
@@ -575,46 +682,63 @@ function runTemocus(source) {
           continue;
         }
 
-        // Бесконечные циклы Temocus
+        // Циклы Temocus
         if (line === "#cycleX") {
-          let restart = -1;
-          let close = -1;
-
-          for (let j = i + 1; j < end; j++) {
-            const current = lines[j].trim();
-
-            if (current === "#cycleX") {
-              fail("Вложенные циклы пока не поддерживаются.");
-            }
-
-            if (current === "#X") {
-              if (restart !== -1) {
-                fail("В цикле найдено несколько маркеров #X.");
-              }
-
-              restart = j;
-            }
-
-            if (current === "#breakcycleX") {
-              close = j;
-              break;
-            }
+          if (cycleActive) {
+            fail("Вложенные циклы пока не поддерживаются.");
           }
 
-          if (close === -1) {
-            fail("Не найден конец цикла #breakcycleX.");
-          }
+          cycleActive = true;
 
-          if (restart === -1 || restart >= close) {
-            fail("Не найден маркер перезапуска цикла #X.");
-          }
+          let cycleResult = null;
 
           while (!halted) {
-            runBlock(i + 1, restart);
+            steps++;
+
+            if (steps > MAX_STEPS) {
+              errors.push(
+                "Превышен лимит команд. Возможно, цикл бесконечный."
+              );
+
+              halted = true;
+              break;
+            }
+
+            cycleResult = runBlock(i + 1, end);
+
+            if (cycleResult === "breakcycle") {
+              break;
+            }
+
+            if (cycleResult === "restart") {
+              continue;
+            }
+
+            // Если цикл дошёл до конца без #X,
+            // повторять его автоматически не нужно.
+            break;
           }
 
-          i = close;
-          continue;
+          cycleActive = false;
+          return null;
+        }
+
+        // Перезапуск цикла
+        if (line === "#X") {
+          if (!cycleActive) {
+            fail("Команда #X находится вне цикла.");
+          }
+
+          return "restart";
+        }
+
+        // Выход из цикла
+        if (line === "#breakcycleX") {
+          if (!cycleActive) {
+            fail("Команда #breakcycleX находится вне цикла.");
+          }
+
+          return "breakcycle";
         }
 
         // Старые циклы с повторениями
@@ -623,7 +747,7 @@ function runTemocus(source) {
         );
 
         if (loop) {
-          const close = findClosing(i, "&plrep", ";(");
+          const close = findClosing(i, "&plrep", ";(", end);
 
           if (close === -1) {
             fail("Не найдено закрытие цикла ;(.");
@@ -632,16 +756,13 @@ function runTemocus(source) {
           const count = Number(loop[3]);
 
           for (let n = 0; n < count && !halted; n++) {
-            runBlock(i + 1, close);
+            const control = runBlock(i + 1, close);
+
+            if (control) return control;
           }
 
           i = close;
           continue;
-        }
-
-        // Маркеры цикла вне цикла
-        if (line === "#X" || line === "#breakcycleX") {
-          fail(`Команда ${line} находится вне цикла.`);
         }
 
         // Паузы
@@ -663,6 +784,8 @@ function runTemocus(source) {
         errors.push(`Строка ${i + 1}: ${error.message}`);
       }
     }
+
+    return null;
   }
 
   // Поиск начала программы
@@ -693,7 +816,11 @@ function runTemocus(source) {
 
   runBlock(start + 1, end);
 
-  return { messages, debug, errors };
+  return {
+    messages,
+    debug,
+    errors
+  };
 }
 
 // Запуск программы
