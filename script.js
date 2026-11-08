@@ -10,9 +10,11 @@ function runTemocus(source) {
   const debug = [];
   const errors = [];
   const inputs = [];
+  const ifValues = Object.create(null);
 
   let fininResult = false;
   let steps = 0;
+  let halted = false;
 
   const MAX_STEPS = 10000;
   const lines = source.split(/\r?\n/);
@@ -21,74 +23,66 @@ function runTemocus(source) {
     throw new Error(message);
   }
 
-function getValue(text) {
-  text = text.trim();
+  function getValue(text) {
+    text = text.trim();
 
-  // Разделение частей по символу |,
-  // но только если он находится вне кавычек
-  function splitConcatenation(expression) {
-    const parts = [];
-    let current = "";
-    let quote = null;
+    function splitConcatenation(expression) {
+      const parts = [];
+      let current = "";
+      let quote = null;
 
-    for (const char of expression) {
-      if ((char === '"' || char === "'") && !quote) {
-        quote = char;
-        current += char;
-      } else if (char === quote) {
-        quote = null;
-        current += char;
-      } else if (char === "|" && !quote) {
-        parts.push(current.trim());
-        current = "";
-      } else {
-        current += char;
+      for (const char of expression) {
+        if ((char === '"' || char === "'") && !quote) {
+          quote = char;
+          current += char;
+        } else if (char === quote) {
+          quote = null;
+          current += char;
+        } else if (char === "|" && !quote) {
+          parts.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
       }
+
+      parts.push(current.trim());
+      return parts;
     }
 
-    parts.push(current.trim());
-    return parts;
+    const parts = splitConcatenation(text);
+
+    if (parts.length > 1) {
+      return parts.map(part => String(getValue(part))).join("");
+    }
+
+    if (
+      (text.startsWith('"') && text.endsWith('"')) ||
+      (text.startsWith("'") && text.endsWith("'"))
+    ) {
+      return text.slice(1, -1);
+    }
+
+    if (/^-?\d+(?:[.,]\d+)?$/.test(text)) {
+      return Number(text.replace(",", "."));
+    }
+
+    if (text === "true") return true;
+    if (text === "false") return false;
+
+    if (text === "{finin}.upper") return fininResult;
+    if (text === "{human.otv}") return inputs[0] ?? "";
+    if (text === "{human.otv}.second2") return inputs[1] ?? "";
+    if (text === "{human.otv}.third3") return inputs[2] ?? "";
+
+    const name = text.startsWith("+") ? text.slice(1) : text;
+
+    if (Object.prototype.hasOwnProperty.call(variables, name)) {
+      return variables[name];
+    }
+
+    fail(`Неизвестное значение: ${text}`);
   }
-
-  const parts = splitConcatenation(text);
-
-  // Если частей несколько — склеиваем их
-  if (parts.length > 1) {
-    return parts.map(part => String(getValue(part))).join("");
-  }
-
-  // Текст в кавычках
-  if (
-    (text.startsWith('"') && text.endsWith('"')) ||
-    (text.startsWith("'") && text.endsWith("'"))
-  ) {
-    return text.slice(1, -1);
-  }
-
-  // Числа
-  if (/^-?\d+(?:[.,]\d+)?$/.test(text)) {
-    return Number(text.replace(",", "."));
-  }
-
-  // Логические значения
-  if (text === "true") return true;
-  if (text === "false") return false;
-
-  // Специальные значения Temocus
-  if (text === "{finin}.upper") return fininResult;
-  if (text === "{human.otv}") return inputs[0] ?? "";
-  if (text === "{human.otv}.second2") return inputs[1] ?? "";
-  if (text === "{human.otv}.third3") return inputs[2] ?? "";
-
-  // Поиск переменной
-  const name = text.startsWith("+") ? text.slice(1) : text;
-
-  if (Object.prototype.hasOwnProperty.call(variables, name)) {
-    return variables[name];
-  }
-
-  fail(`Неизвестное значение: ${text}`);
-}
 
   function setVariable(name, value) {
     variables[name] = value;
@@ -140,23 +134,41 @@ function getValue(text) {
     return Number(result.toFixed(10));
   }
 
-  function evaluateCondition(condition) {
+  // Проверки Temocus: if, if2, if3 и другие
+  function evaluateCondition(condition, conditionName = "if") {
     condition = condition.trim();
 
     if (condition.startsWith("Not ")) {
-      return !evaluateCondition(condition.slice(4));
+      return !evaluateCondition(
+        condition.slice(4),
+        conditionName
+      );
     }
 
     const andParts = condition.split(/\s+,\.\s+/);
 
     if (andParts.length > 1) {
-      return andParts.every(evaluateCondition);
+      let result = true;
+
+      for (const part of andParts) {
+        const current = evaluateCondition(part, conditionName);
+        if (!current) result = false;
+      }
+
+      return result;
     }
 
     const orParts = condition.split(/\s+o\.r\s+/);
 
     if (orParts.length > 1) {
-      return orParts.some(evaluateCondition);
+      let result = false;
+
+      for (const part of orParts) {
+        const current = evaluateCondition(part, conditionName);
+        if (current) result = true;
+      }
+
+      return result;
     }
 
     condition = condition.replace(/^['"]|['"]$/g, "").trim();
@@ -169,52 +181,103 @@ function getValue(text) {
       fail(`Неизвестное условие: ${condition}`);
     }
 
-       const left = getValue(match[1].trim());
+    const variableName = match[1].trim();
+    const left = getValue(variableName);
+    const operator = match[2];
     const rightText = match[3].trim();
-    const right = getValue(
-      rightText.startsWith("[") && rightText.endsWith("]")
-        ? rightText.slice(1, -1)
-        : rightText
+
+    let right;
+    let negate = false;
+
+    // Обработка {if}, {if2}, {if3} и т.д.
+    const referenceMatch = rightText.match(
+      /^(not\s+)?\{(if\d*)\}$/ 
     );
-    
-    switch (match[2]) {
+
+    if (referenceMatch) {
+      negate = Boolean(referenceMatch[1]);
+
+      const referenceName = referenceMatch[2];
+
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          ifValues,
+          referenceName
+        ) ||
+        !Object.prototype.hasOwnProperty.call(
+          ifValues[referenceName],
+          variableName
+        )
+      ) {
+        fail(
+          `Нет предыдущего значения {${referenceName}} для ${variableName}.`
+        );
+      }
+
+      right = ifValues[referenceName][variableName];
+
+    } else {
+      right = getValue(
+        rightText.startsWith("[") && rightText.endsWith("]")
+          ? rightText.slice(1, -1)
+          : rightText
+      );
+    }
+
+    // Сохраняем проверенное значение
+    if (!ifValues[conditionName]) {
+      ifValues[conditionName] = Object.create(null);
+    }
+
+    ifValues[conditionName][variableName] = right;
+
+    let result;
+
+    switch (operator) {
       case "@=":
       case "=@":
-        return left == right;
+        result = left == right;
+        break;
 
       case "≠@":
       case "@≠":
-        return left != right;
+        result = left != right;
+        break;
 
       case ">":
-        return left > right;
+        result = left > right;
+        break;
 
       case "<":
-        return left < right;
+        result = left < right;
+        break;
 
       case ">=":
       case ">.=":
-        return left >= right;
+        result = left >= right;
+        break;
 
       case "<=":
       case "<.=":
-        return left <= right;
+        result = left <= right;
+        break;
 
       default:
         fail("Неизвестный оператор.");
     }
+
+    return negate ? !result : result;
   }
 
-   function findClosing(start, open, close) {
+  function findClosing(start, open, close) {
     let depth = 0;
 
     for (let i = start; i < lines.length; i++) {
       const line = lines[i].trim();
 
-      // Для условий *if2 не считается вложенным *if
       if (
         open === "*if"
-          ? /^\*if\s+/.test(line)
+          ? /^\*if\d*\s+/.test(line) || line.startsWith("*not if")
           : line.startsWith(open)
       ) {
         depth++;
@@ -229,18 +292,29 @@ function getValue(text) {
 
     return -1;
   }
-  
+
   function runBlock(start, end) {
+    if (halted) return;
+
     for (let i = start; i < end; i++) {
+      if (halted) break;
+
       steps++;
 
       if (steps > MAX_STEPS) {
-        fail("Превышен лимит команд. Возможно, цикл бесконечный.");
+        errors.push(
+          "Превышен лимит команд. Возможно, цикл бесконечный."
+        );
+
+        halted = true;
+        break;
       }
 
       const line = lines[i].trim();
 
-if (!line || line.startsWith("//") || line === ";(") continue;
+      if (!line || line.startsWith("//") || line === ";(") {
+        continue;
+      }
 
       try {
         // Ввод данных
@@ -257,7 +331,7 @@ if (!line || line.startsWith("//") || line === ";(") continue;
           continue;
         }
 
-               // Случайные числа — новый синтаксис rand<min, max>
+        // Случайные числа
         const random = line.match(
           /^\+([A-Za-z_]\w*)\s*=\s*rand<\s*(-?\d+)\s*,\s*(-?\d+)\s*>\s*:?$/
         );
@@ -277,6 +351,7 @@ if (!line || line.startsWith("//") || line === ";(") continue;
           setVariable(random[1], value);
           continue;
         }
+
         // Создание переменных
         const assignment = line.match(
           /^\+([A-Za-z_]\w*)\s*=\s*(.+?):?$/
@@ -431,7 +506,6 @@ if (!line || line.startsWith("//") || line === ";(") continue;
             ) {
               let branchEnd = j;
 
-              // Убираем закрывающий маркер ;(
               while (
                 branchEnd > branchStart + 1 &&
                 lines[branchEnd - 1].trim() === ";("
@@ -451,7 +525,6 @@ if (!line || line.startsWith("//") || line === ";(") continue;
 
           let branchEnd = close;
 
-          // Убираем последний закрывающий маркер ;(
           while (
             branchEnd > branchStart + 1 &&
             lines[branchEnd - 1].trim() === ";("
@@ -474,29 +547,34 @@ if (!line || line.startsWith("//") || line === ";(") continue;
               matches = !chosen;
             } else {
               const conditionMatch = branch.header.match(
-                /^\*if\d*\s+'([\s\S]*?)'\s*;\)?$/
+                /^\*(if\d*)\s+'([\s\S]*?)'\s*;\)?$/
               );
 
               if (!conditionMatch) {
                 fail("Проверь синтаксис условия.");
               }
 
+              const conditionName = conditionMatch[1];
+
               matches = !chosen &&
-                evaluateCondition(conditionMatch[1]);
+                evaluateCondition(
+                  conditionMatch[2],
+                  conditionName
+                );
             }
 
             if (matches) {
               chosen = true;
               runBlock(branch.start, branch.end);
             }
+
+            if (halted) break;
           }
 
           i = close;
           continue;
         }
 
-        // Циклы
-        
         // Бесконечные циклы Temocus
         if (line === "#cycleX") {
           let restart = -1;
@@ -531,12 +609,8 @@ if (!line || line.startsWith("//") || line === ";(") continue;
             fail("Не найден маркер перезапуска цикла #X.");
           }
 
-          try {
-            while (true) {
-              runBlock(i + 1, restart);
-            }
-          } catch (error) {
-            errors.push(`Строка ${i + 1}: ${error.message}`);
+          while (!halted) {
+            runBlock(i + 1, restart);
           }
 
           i = close;
@@ -557,7 +631,7 @@ if (!line || line.startsWith("//") || line === ";(") continue;
 
           const count = Number(loop[3]);
 
-          for (let n = 0; n < count; n++) {
+          for (let n = 0; n < count && !halted; n++) {
             runBlock(i + 1, close);
           }
 
@@ -565,11 +639,12 @@ if (!line || line.startsWith("//") || line === ";(") continue;
           continue;
         }
 
+        // Маркеры цикла вне цикла
         if (line === "#X" || line === "#breakcycleX") {
           fail(`Команда ${line} находится вне цикла.`);
         }
 
-        // Паузы пока не реализованы
+        // Паузы
         const pause = line.match(/^[*-]stop\.(\d+)\s*:?$/);
 
         if (pause) {
@@ -590,6 +665,7 @@ if (!line || line.startsWith("//") || line === ";(") continue;
     }
   }
 
+  // Поиск начала программы
   const start = lines.findIndex(
     line => line.trim() === "!TCS"
   );
@@ -602,6 +678,7 @@ if (!line || line.startsWith("//") || line === ";(") continue;
     };
   }
 
+  // Поиск конца программы
   const end = lines.findIndex(
     (line, index) => index > start && line.trim() === "TCS!"
   );
@@ -619,6 +696,7 @@ if (!line || line.startsWith("//") || line === ";(") continue;
   return { messages, debug, errors };
 }
 
+// Запуск программы
 runButton.addEventListener("click", () => {
   const result = runTemocus(codeEditor.value);
 
@@ -638,4 +716,3 @@ runButton.addEventListener("click", () => {
     ? debugLines.join("\n")
     : "Запуск завершён. Отладочных сообщений нет.";
 });
-
