@@ -76,12 +76,10 @@ function runTemocus(source) {
 
     if (text === "{finin}.upper") return fininResult;
 
-    // Ответы пользователя
     if (text === "{human.otv}") return inputs[0] ?? "";
     if (text === "{human.otv}.second2") return inputs[1] ?? "";
     if (text === "{human.otv}.third3") return inputs[2] ?? "";
 
-    // .upper — последний введённый ответ
     if (
       text === ".upper" ||
       text === "{human.otv}.upper"
@@ -148,7 +146,7 @@ function runTemocus(source) {
     return Number(result.toFixed(10));
   }
 
-  // Разделение логических выражений без разделения текста в кавычках
+  // Разделение логических выражений
   function splitLogical(expression, operator) {
     const result = [];
     let current = "";
@@ -196,7 +194,7 @@ function runTemocus(source) {
     return result;
   }
 
-  // Проверки Temocus: if, if2, if3 и другие
+  // Проверка условий
   function evaluateCondition(condition, conditionName = "if") {
     condition = condition.trim();
 
@@ -207,46 +205,32 @@ function runTemocus(source) {
       );
     }
 
-    if (/^Not\s+/i.test(condition)) {
-      return !evaluateCondition(
-        condition.replace(/^Not\s+/i, ""),
-        conditionName
-      );
-    }
-
     const andParts = splitLogical(condition, ",.");
 
     if (andParts.length > 1) {
-      let result = true;
-
       for (const part of andParts) {
         if (!evaluateCondition(part, conditionName)) {
-          result = false;
-          break;
+          return false;
         }
       }
 
-      return result;
+      return true;
     }
 
     const orParts = splitLogical(condition, "o.r");
 
     if (orParts.length > 1) {
-      let result = false;
-
       for (const part of orParts) {
         if (evaluateCondition(part, conditionName)) {
-          result = true;
-          break;
+          return true;
         }
       }
 
-      return result;
+      return false;
     }
 
     condition = condition.replace(/^['"]|['"]$/g, "").trim();
 
-    // Левая часть может быть [переменная] или выражением .upper
     const match = condition.match(
       /^(\[[^\]]+\]|\{human\.otv\}(?:\.(?:second2|third3|upper))?|\.upper)\s*(>\.=|<\.=|≠@|@≠|@=|=@|>=|<=|>|<)\s*(.+?)\s*$/
     );
@@ -268,7 +252,6 @@ function runTemocus(source) {
     let right;
     let negate = false;
 
-    // Ссылки на сохранённые условия: {if}, {if2}, {if3}...
     const referenceMatch = rightText.match(
       /^(not\s+)?\{(if\d*)\}$/i
     );
@@ -343,82 +326,105 @@ function runTemocus(source) {
     return negate ? !result : result;
   }
 
-  // Поиск закрывающей скобки условия
-  function findClosing(start, open, close, limit = lines.length) {
-    let depth = 0;
-
+  /*
+   * Поиск конца ветви.
+   * Вложенные условия пропускаются целиком.
+   */
+  function findConditionSeparator(start, limit) {
     for (let i = start; i < limit; i++) {
       const line = lines[i].trim();
 
-      if (open === "*if") {
-        if (isConditionHeader(line)) {
-          depth++;
-        }
-      } else if (line.startsWith(open)) {
-        depth++;
+      if (/^\*if\d*\s+/.test(line)) {
+        const nested = parseConditionStructure(i, limit);
+        i = nested.nextIndex - 1;
+        continue;
       }
 
-      if (line === close) {
-        depth--;
-
-        if (depth === 0) return i;
+      if (line === ";(") {
+        return i;
       }
     }
 
     return -1;
   }
 
-  // Разбор ветвей одного условия
-  function getConditionBranches(start, close) {
-    const branches = [];
-    let branchHeader = lines[start].trim();
-    let branchStart = start + 1;
+  /*
+   * Разбор конструкции:
+   *
+   * *if ...
+   *   команды
+   * ;(
+   * *not if ;)
+   *   команды
+   * ;(
+   */
+  function parseConditionStructure(index, limit) {
+    const header = lines[index].trim();
 
-    let j = start + 1;
-
-    while (j < close) {
-      const current = lines[j].trim();
-
-      if (isConditionHeader(current)) {
-        const previous = j > start
-          ? lines[j - 1].trim()
-          : "";
-
-        // Условие после ;( — следующая ветвь
-        if (previous === ";(") {
-          branches.push({
-            header: branchHeader,
-            start: branchStart,
-            end: j - 1
-          });
-
-          branchHeader = current;
-          branchStart = j + 1;
-          j++;
-          continue;
-        }
-
-        // Вложенное условие — пропускаем его целиком
-        const nestedClose = findClosing(j, "*if", ":(", close + 1);
-
-        if (nestedClose === -1) {
-          fail("Не найдено закрытие вложенного условия :(.");
-        }
-
-        j = nestedClose + 1;
-        continue;
-      }
-
-      j++;
+    if (!/^\*if\d*\s+/.test(header)) {
+      fail("Ожидалось начало условия.");
     }
 
-    branches.push({
-      header: branchHeader,
-      start: branchStart,
-      end: close
-    });
+    const firstSeparator = findConditionSeparator(index + 1, limit);
 
-    return branches;
+    if (firstSeparator === -1) {
+      fail("Не найден разделитель ;( у условия.");
+    }
+
+    const structure = {
+      header,
+      thenStart: index + 1,
+      thenEnd: firstSeparator,
+      elseHeader: null,
+      elseStart: -1,
+      elseEnd: -1,
+      nextIndex: firstSeparator + 1
+    };
+
+    // Проверяем, есть ли следующая ветвь *not if
+    let next = firstSeparator + 1;
+
+    while (next < limit && !lines[next].trim()) {
+      next++;
+    }
+
+    if (
+      next < limit &&
+      lines[next].trim().startsWith("*not if")
+    ) {
+      const elseSeparator = findConditionSeparator(next + 1, limit);
+
+      if (elseSeparator === -1) {
+        fail("Не найден разделитель ;( у *not if.");
+      }
+
+      structure.elseHeader = lines[next].trim();
+      structure.elseStart = next + 1;
+      structure.elseEnd = elseSeparator;
+      structure.nextIndex = elseSeparator + 1;
+    }
+
+    return structure;
+  }
+
+  // Поиск закрытия старых циклов
+  function findLoopClosing(start, limit) {
+    let depth = 0;
+
+    for (let i = start; i < limit; i++) {
+      const line = lines[i].trim();
+
+      if (/^&plrep(u)?\./.test(line)) {
+        depth++;
+      }
+
+      if (line === ";(") {
+        if (depth === 0) return i;
+        depth--;
+      }
+    }
+
+    return -1;
   }
 
   function runBlock(start, end) {
@@ -440,7 +446,7 @@ function runTemocus(source) {
 
       const line = lines[i].trim();
 
-      if (!line || line.startsWith("//") || line === ";(") {
+      if (!line || line.startsWith("//") || line === ";(" || line === ":(") {
         continue;
       }
 
@@ -481,7 +487,6 @@ function runTemocus(source) {
         }
 
         // Создание переменных
-        // Знак = здесь используется только для присваивания
         const assignment = line.match(
           /^\+([A-Za-z_]\w*)\s*=\s*(.+?)\s*:?$/
         );
@@ -631,66 +636,57 @@ function runTemocus(source) {
           continue;
         }
 
-        // Условия
-        if (isConditionHeader(line)) {
-          const close = findClosing(i, "*if", ":(", end);
+        // Условия и вложенные условия
+        if (/^\*if\d*\s+/.test(line)) {
+          const structure = parseConditionStructure(i, end);
 
-          if (close === -1) {
-            fail("Не найдено закрытие условия :(.");
+          const conditionMatch = structure.header.match(
+            /^\*(if\d*)\s+'([\s\S]*?)'\s*;\)?$/
+          );
+
+          if (!conditionMatch) {
+            fail("Проверь синтаксис условия.");
           }
 
-          const branches = getConditionBranches(i, close);
-          let chosen = false;
+          const conditionName = conditionMatch[1];
 
-          for (const branch of branches) {
-            let matches = false;
+          const matches = evaluateCondition(
+            conditionMatch[2],
+            conditionName
+          );
 
-            if (branch.header.startsWith("*not if")) {
-              matches = !chosen;
-            } else {
-              const conditionMatch = branch.header.match(
-                /^\*(if\d*)\s+'([\s\S]*?)'\s*;\)?$/
-              );
+          if (matches) {
+            const control = runBlock(
+              structure.thenStart,
+              structure.thenEnd
+            );
 
-              if (!conditionMatch) {
-                fail("Проверь синтаксис условия.");
-              }
+            if (control) return control;
+          } else if (structure.elseHeader) {
+            const control = runBlock(
+              structure.elseStart,
+              structure.elseEnd
+            );
 
-              const conditionName = conditionMatch[1];
-
-              matches = !chosen && evaluateCondition(
-                conditionMatch[2],
-                conditionName
-              );
-            }
-
-            if (matches) {
-              chosen = true;
-
-              const control = runBlock(
-                branch.start,
-                branch.end
-              );
-
-              if (control) return control;
-            }
-
-            if (halted) break;
+            if (control) return control;
           }
 
-          i = close;
+          i = structure.nextIndex - 1;
           continue;
         }
 
-        // Циклы Temocus
+        // *not if вне связанного условия
+        if (line.startsWith("*not if")) {
+          fail("*not if должен следовать после ветви *if.");
+        }
+
+        // Бесконечные циклы Temocus
         if (line === "#cycleX") {
           if (cycleActive) {
             fail("Вложенные циклы пока не поддерживаются.");
           }
 
           cycleActive = true;
-
-          let cycleResult = null;
 
           while (!halted) {
             steps++;
@@ -704,18 +700,16 @@ function runTemocus(source) {
               break;
             }
 
-            cycleResult = runBlock(i + 1, end);
+            const control = runBlock(i + 1, end);
 
-            if (cycleResult === "breakcycle") {
+            if (control === "breakcycle") {
               break;
             }
 
-            if (cycleResult === "restart") {
+            if (control === "restart") {
               continue;
             }
 
-            // Если цикл дошёл до конца без #X,
-            // повторять его автоматически не нужно.
             break;
           }
 
@@ -747,7 +741,7 @@ function runTemocus(source) {
         );
 
         if (loop) {
-          const close = findClosing(i, "&plrep", ";(", end);
+          const close = findLoopClosing(i + 1, end);
 
           if (close === -1) {
             fail("Не найдено закрытие цикла ;(.");
