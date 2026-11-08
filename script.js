@@ -817,6 +817,7 @@ function runTemocus(source) {
   };
 }
 
+console.log("TEMOCUS INTERPRETER VERSION: 839 FIX TEST");
 // Запуск программы
 runButton.addEventListener("click", () => {
   const result = runTemocus(codeEditor.value);
