@@ -496,6 +496,54 @@ if (!line || line.startsWith("//") || line === ";(") continue;
         }
 
         // Циклы
+        
+        // Бесконечные циклы Temocus
+        if (line === "#cycleX") {
+          let restart = -1;
+          let close = -1;
+
+          for (let j = i + 1; j < end; j++) {
+            const current = lines[j].trim();
+
+            if (current === "#cycleX") {
+              fail("Вложенные циклы пока не поддерживаются.");
+            }
+
+            if (current === "#X") {
+              if (restart !== -1) {
+                fail("В цикле найдено несколько маркеров #X.");
+              }
+
+              restart = j;
+            }
+
+            if (current === "#breakcycleX") {
+              close = j;
+              break;
+            }
+          }
+
+          if (close === -1) {
+            fail("Не найден конец цикла #breakcycleX.");
+          }
+
+          if (restart === -1 || restart >= close) {
+            fail("Не найден маркер перезапуска цикла #X.");
+          }
+
+          try {
+            while (true) {
+              runBlock(i + 1, restart);
+            }
+          } catch (error) {
+            errors.push(`Строка ${i + 1}: ${error.message}`);
+          }
+
+          i = close;
+          continue;
+        }
+
+        // Старые циклы с повторениями
         const loop = line.match(
           /^&plrep(u)?\.([A-Za-z_]\w*)\((\d+)\)\s*;\)?$/
         );
@@ -515,6 +563,10 @@ if (!line || line.startsWith("//") || line === ";(") continue;
 
           i = close;
           continue;
+        }
+
+        if (line === "#X" || line === "#breakcycleX") {
+          fail(`Команда ${line} находится вне цикла.`);
         }
 
         // Паузы пока не реализованы
