@@ -817,8 +817,46 @@ function runTemocus(source) {
   };
 }
 
-console.log("TEMOCUS INTERPRETER VERSION: 839 FIX TEST");
-// Запуск программы
+// =====================================
+// TEMOCUS PLATFORM — INTERFACE
+// =====================================
+
+const pages = {
+  studio: document.getElementById("studioPage"),
+  ideas: document.getElementById("ideasPage"),
+  store: document.getElementById("storePage"),
+  ai: document.getElementById("aiPage")
+};
+
+const navButtons = document.querySelectorAll("[data-page]");
+
+function openPage(name) {
+  if (!pages[name]) return;
+
+  Object.values(pages).forEach(page => {
+    page.classList.remove("active");
+  });
+
+  pages[name].classList.add("active");
+
+  navButtons.forEach(button => {
+    button.classList.toggle(
+      "active",
+      button.dataset.page === name
+    );
+  });
+}
+
+navButtons.forEach(button => {
+  button.addEventListener("click", () => {
+    openPage(button.dataset.page);
+  });
+});
+
+// =====================================
+// TEMOCUS STUDIO — RUN
+// =====================================
+
 runButton.addEventListener("click", () => {
   const result = runTemocus(codeEditor.value);
 
@@ -833,6 +871,157 @@ runButton.addEventListener("click", () => {
     debugLines.push("ОШИБКИ:");
     debugLines.push(...result.errors);
   }
+
+  secret.textContent = debugLines.length
+    ? debugLines.join("\n")
+    : "Запуск завершён. Отладочных сообщений нет.";
+});
+
+// =====================================
+// THEME — DARK / LIGHT
+// =====================================
+
+const themeButton = document.getElementById("themeButton");
+
+themeButton.addEventListener("click", () => {
+  document.body.classList.toggle("light");
+
+  themeButton.textContent =
+    document.body.classList.contains("light") ? "☾" : "☼";
+});
+
+// =====================================
+// TEMOCUS AI — HOVER PRICE
+// =====================================
+
+const aiButton = document.getElementById("aiButton");
+const aiLabel = document.getElementById("aiLabel");
+
+let aiPurchased = false;
+
+aiButton.addEventListener("mouseenter", () => {
+  if (!aiPurchased) {
+    aiLabel.textContent = "$0.99";
+  }
+});
+
+aiButton.addEventListener("mouseleave", () => {
+  aiLabel.textContent = "AI";
+});
+
+// =====================================
+// PAYMENT WINDOW — DEMO ONLY
+// =====================================
+
+const paymentModal = document.getElementById("paymentModal");
+const paymentTitle = document.getElementById("paymentTitle");
+const paymentDescription = document.getElementById("paymentDescription");
+
+const cancelPayment = document.getElementById("cancelPayment");
+const confirmPayment = document.getElementById("confirmPayment");
+
+let paymentType = null;
+
+function openPayment(type) {
+  paymentType = type;
+
+  if (type === "ai") {
+    paymentTitle.textContent = "TEMOCUS AI";
+    paymentDescription.textContent =
+      "Покупка Temocus AI за $0.99. Это демонстрация — реальные платежи пока не подключены.";
+  }
+
+  if (type === "idea") {
+    paymentTitle.textContent = "TEMOCUS IDEAS";
+    paymentDescription.textContent =
+      "Отправка идеи стоит $0.09. Это демонстрация — реальные платежи пока не подключены.";
+  }
+
+  paymentModal.classList.add("show");
+}
+
+function closePayment() {
+  paymentModal.classList.remove("show");
+  paymentType = null;
+}
+
+cancelPayment.addEventListener("click", closePayment);
+
+confirmPayment.addEventListener("click", () => {
+  if (paymentType === "ai") {
+    alert("Платёжная система пока не подключена.");
+  }
+
+  if (paymentType === "idea") {
+    alert("Отправка идей пока находится в разработке.");
+  }
+
+  closePayment();
+});
+
+aiButton.addEventListener("click", () => {
+  if (!aiPurchased) {
+    openPayment("ai");
+  } else {
+    openPage("ai");
+  }
+});
+
+// =====================================
+// IDEAS — SEND
+// =====================================
+
+const ideaInput = document.getElementById("ideaInput");
+const sendIdea = document.getElementById("sendIdea");
+
+sendIdea.addEventListener("click", () => {
+  if (!ideaInput.value.trim()) {
+    alert("Сначала напиши свою идею!");
+    return;
+  }
+
+  openPayment("idea");
+});
+
+// =====================================
+// TEMOCUS AI — CHAT INTERFACE
+// =====================================
+
+const aiInput = document.getElementById("aiInput");
+const sendAI = document.getElementById("sendAI");
+const chatMessages = document.getElementById("chatMessages");
+
+function sendAIMessage() {
+  const question = aiInput.value.trim();
+
+  if (!question) return;
+
+  const userMessage = document.createElement("div");
+  userMessage.className = "chat-user";
+  userMessage.textContent = question;
+
+  chatMessages.appendChild(userMessage);
+
+  const response = document.createElement("div");
+  response.className = "chat-placeholder";
+  response.textContent =
+    "Temocus AI пока не подключён. Интерфейс чата готов к подключению AI.";
+
+  chatMessages.appendChild(response);
+
+  aiInput.value = "";
+}
+
+sendAI.addEventListener("click", sendAIMessage);
+
+aiInput.addEventListener("keydown", event => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendAIMessage();
+  }
+});
+
+console.log("TEMOCUS PLATFORM — INTERFACE LOADED");
 
   secret.textContent = debugLines.length
     ? debugLines.join("\n")
