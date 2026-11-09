@@ -856,27 +856,36 @@ navButtons.forEach(button => {
 // =====================================
 // TEMOCUS STUDIO — RUN
 // =====================================
+if (runButton && codeEditor && output && secret) {
+  runButton.addEventListener("click", () => {
+    try {
+      const result = runTemocus(codeEditor.value);
 
-runButton.addEventListener("click", () => {
-  const result = runTemocus(codeEditor.value);
+      output.textContent = result.messages.length
+        ? result.messages.join("\n")
+        : "Программа завершилась без вывода.";
 
-  output.textContent = result.messages.length
-    ? result.messages.join("\n")
-    : "Программа завершилась без вывода.";
+      const debugLines = [...result.debug];
 
-  const debugLines = [...result.debug];
+      if (result.errors.length) {
+        debugLines.push("");
+        debugLines.push("ОШИБКИ:");
+        debugLines.push(...result.errors);
+      }
 
-  if (result.errors.length) {
-    debugLines.push("");
-    debugLines.push("ОШИБКИ:");
-    debugLines.push(...result.errors);
-  }
+      secret.textContent = debugLines.length
+        ? debugLines.join("\n")
+        : "Запуск завершён. Отладочных сообщений нет.";
 
-  secret.textContent = debugLines.length
-    ? debugLines.join("\n")
-    : "Запуск завершён. Отладочных сообщений нет.";
-});
-
+    } catch (error) {
+      output.textContent = "Ошибка запуска Temocus.";
+      secret.textContent = error.message;
+      console.error(error);
+    }
+  });
+} else {
+  console.error("TEMOCUS RUN: Не найдены необходимые HTML-элементы.");
+}
 // =====================================
 // THEME — DARK / LIGHT
 // =====================================
