@@ -1,73 +1,133 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>Temocus Sandbox</title>
-  <meta name="description" content="A sandbox environment for Temocus, a custom programming language.">
-
+  <title>TEMOCUS Platform</title>
   <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-
   <div class="app">
 
     <header class="topbar">
-      <div class="logo">T<span>CS</span></div>
+      <nav class="left-nav">
+        <button class="nav-button active" data-page="studio">Studio</button>
+        <button class="nav-button" data-page="ideas">Ideas</button>
+      </nav>
 
-      <div class="brand">
-        <h1>Temocus Sandbox</h1>
-        <p>Development Environment · v1.0</p>
+      <div class="brand">TEMOCUS</div>
+
+      <div class="right-nav">
+        <button class="nav-button ai-button" id="aiButton" data-page="ai">
+          <span id="aiLabel">AI</span>
+        </button>
+        <button class="theme-button" id="themeButton" title="Сменить тему">☼</button>
       </div>
-
-      <button id="runButton">▶ Запустить</button>
     </header>
 
-    <main class="workspace">
+    <main>
 
-      <section class="editor">
-        <div class="panel-title">
-          📝 Редактор Temocus
+      <!-- STUDIO -->
+      <section class="page active" id="studioPage">
+        <h2 class="page-title">Studio</h2>
+
+        <div class="studio-toolbar">
+          <span>Temocus Editor</span>
+          <button id="runButton" class="green-button">▶ RUN</button>
         </div>
 
-        <textarea
-          id="code"
-          spellcheck="false"
-          placeholder="Напиши свою программу Temocus..."
-        >!TCS
+        <div class="workspace">
+          <section class="panel">
+            <div class="panel-title">📝 Редактор Temocus</div>
+            <textarea id="code" spellcheck="false">!TCS
 Say ("Привет, мир!"):
 TCS!</textarea>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">📟 OUTPUT</div>
+            <pre id="output">Здесь появится результат...</pre>
+
+            <div class="panel-title">🕵️ SECRET CONSOLE</div>
+            <pre id="secret">Ожидание данных...</pre>
+          </section>
+        </div>
       </section>
 
-      <section class="output">
+      <!-- IDEAS -->
+      <section class="page" id="ideasPage">
+        <h2 class="page-title">IDEAS</h2>
 
-        <div class="panel-title">
-          📟 Вывод программы
+        <div class="idea-box">
+          <textarea id="ideaInput"
+            placeholder="Напиши свою идею..."></textarea>
+
+          <div class="idea-actions">
+            <button id="sendIdea" class="green-button">$0.09 &gt;</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STORE -->
+      <section class="page" id="storePage">
+        <h2 class="page-title">Store</h2>
+
+        <div class="store-card">
+          <div class="store-image">📦</div>
+          <div class="store-info">
+            <h3>Название товара</h3>
+            <p>Описание товара</p>
+          </div>
+          <div class="store-price">$0.00</div>
         </div>
 
-        <pre id="output">Здесь появится результат...</pre>
+        <p class="muted">Здесь будут размещаться товары TEMOCUS.</p>
+      </section>
 
-        <div class="panel-title">
-          🕵️ Секретная консоль
+      <!-- AI -->
+      <section class="page" id="aiPage">
+        <h2 class="page-title ai-title">AI</h2>
+
+        <div class="ai-chat">
+          <div class="bot-message">
+            <div class="bot-icon">AI</div>
+            <div class="message">
+              Привет, я Temocus AI! Помогу тебе с кодом,
+              есть проблемы?
+            </div>
+          </div>
+
+          <div id="chatMessages"></div>
+
+          <div class="ai-input-area">
+            <textarea id="aiInput"
+              placeholder="Напиши свой вопрос..."></textarea>
+            <button id="sendAI" class="green-button">➤</button>
+          </div>
+          <p class="muted">Поле ввода всегда находится здесь, под приветствием.</p>
         </div>
-
-        <pre id="secret">Ожидание данных...</pre>
-
       </section>
 
     </main>
 
     <footer>
-      Temocus Sandbox · Made for Temocus
+      <button class="footer-store" data-page="store">TEMOCUS Store</button>
+      <span>TEMOCUS Platform</span>
     </footer>
 
   </div>
 
-  <script src="script.js"></script>
+  <div class="modal" id="paymentModal">
+    <div class="modal-content">
+      <h2 id="paymentTitle">Покупка</h2>
+      <p id="paymentDescription"></p>
+      <div class="modal-actions">
+        <button id="cancelPayment" class="secondary-button">Отмена</button>
+        <button id="confirmPayment" class="green-button">Продолжить</button>
+      </div>
+    </div>
+  </div>
 
+  <script src="script.js"></script>
 </body>
 </html>
-
