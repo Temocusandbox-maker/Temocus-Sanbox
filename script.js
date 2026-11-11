@@ -76,13 +76,14 @@ function runTemocus(source) {
 
     if (text === "{finin}.upper") return fininResult;
 
-    if (text === "{human.otv}") return inputs[0] ?? "";
-    if (text === "{human.otv}.second2") return inputs[1] ?? "";
-    if (text === "{human.otv}.third3") return inputs[2] ?? "";
+    if (text === "{human.otv}" || text === "{human.otv1}" || text === "{human.otv1}.first1" || text === "{human.otv}.first1") return inputs[0] ?? "";
+    if (text === "{human.otv}.second2" || text === "{human.otv1}.second2") return inputs[1] ?? "";
+    if (text === "{human.otv}.third3" || text === "{human.otv1}.third3") return inputs[2] ?? "";
 
     if (
       text === ".upper" ||
-      text === "{human.otv}.upper"
+      text === "{human.otv}.upper" ||
+      text === "{human.otv1}.upper"
     ) {
       return inputs[inputs.length - 1] ?? "";
     }
@@ -229,11 +230,10 @@ function runTemocus(source) {
       return false;
     }
 
-    // Не удаляем кавычки внутри выражения!
     condition = condition.trim();
 
     const match = condition.match(
-      /^(\[[^\]]+\]|\{human\.otv\}(?:\.(?:second2|third3|upper))?|\.upper)\s*(>\.=|<\.=|≠@|@≠|@=|=@|>=|<=|>|<)\s*(.+?)\s*$/
+      /^(\[[^\]]+\]|\{human\.otv1?\}(?:\.(?:first1|second2|third3|upper))?|\.upper)\s*(>\.=|<\.=|≠@|@≠|@=|=@|>=|<=|>|<)\s*(.+?)\s*$/
     );
 
     if (!match) {
