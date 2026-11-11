@@ -229,7 +229,8 @@ function runTemocus(source) {
       return false;
     }
 
-    condition = condition.replace(/^['"]|['"]$/g, "").trim();
+    // Не удаляем кавычки внутри выражения!
+    condition = condition.trim();
 
     const match = condition.match(
       /^(\[[^\]]+\]|\{human\.otv\}(?:\.(?:second2|third3|upper))?|\.upper)\s*(>\.=|<\.=|≠@|@≠|@=|=@|>=|<=|>|<)\s*(.+?)\s*$/
@@ -886,6 +887,7 @@ if (runButton && codeEditor && output && secret) {
 } else {
   console.error("TEMOCUS RUN: Не найдены необходимые HTML-элементы.");
 }
+
 // =====================================
 // THEME — DARK / LIGHT
 // =====================================
