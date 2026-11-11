@@ -1031,8 +1031,3 @@ aiInput.addEventListener("keydown", event => {
 });
 
 console.log("TEMOCUS PLATFORM — INTERFACE LOADED");
-
-  secret.textContent = debugLines.length
-    ? debugLines.join("\n")
-    : "Запуск завершён. Отладочных сообщений нет.";
-});
